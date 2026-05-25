@@ -1,0 +1,577 @@
+using System;
+using System.IO;
+using System.Linq;
+using System.Collections.Generic;
+
+namespace EventRegistrationSystem
+{
+    class Program
+    {
+        static string dataFolder = "data";
+        static string registrationFile = Path.Combine(dataFolder, "registrations.txt");
+        static string auditFile = Path.Combine(dataFolder, "audit.txt");
+
+        static void Main(string[] args)
+        {
+            InitializeStorage();
+
+            while (true)
+            {
+                Console.Clear();
+
+                Console.WriteLine("===== EVENT REGISTRATION SYSTEM =====");
+                Console.WriteLine("1. Add Registration");
+                Console.WriteLine("2. View Registrations");
+                Console.WriteLine("3. Search Registration");
+                Console.WriteLine("4. Update Registration");
+                Console.WriteLine("5. Soft Delete Registration");
+                Console.WriteLine("6. Hard Delete Registration");
+                Console.WriteLine("7. Generate Report");
+                Console.WriteLine("8. View Audit Logs");
+                Console.WriteLine("0. Exit");
+
+                Console.Write("Choose: ");
+                string choice = Console.ReadLine();
+
+                switch (choice)
+                {
+                    case "1":
+                        AddRegistration();
+                        break;
+
+                    case "2":
+                        ViewRegistrations();
+                        break;
+
+                    case "3":
+                        SearchRegistration();
+                        break;
+
+                    case "4":
+                        UpdateRegistration();
+                        break;
+
+                    case "5":
+                        SoftDeleteRegistration();
+                        break;
+
+                    case "6":
+                        HardDeleteRegistration();
+                        break;
+
+                    case "7":
+                        GenerateReport();
+                        break;
+
+                    case "8":
+                        ViewAuditLogs();
+                        break;
+
+                    case "0":
+                        Console.WriteLine("Exiting...");
+                        return;
+
+                    default:
+                        Console.WriteLine("Invalid choice.");
+                        Pause();
+                        break;
+                }
+            }
+        }
+
+        // Create storage
+        static void InitializeStorage()
+        {
+            try
+            {
+                if (!Directory.Exists(dataFolder))
+                {
+                    Directory.CreateDirectory(dataFolder);
+                }
+
+                if (!File.Exists(registrationFile))
+                {
+                    File.Create(registrationFile).Close();
+                }
+
+                if (!File.Exists(auditFile))
+                {
+                    File.Create(auditFile).Close();
+                }
+
+                LogAction("SYSTEM", "Storage initialized.");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Initialization error: " + ex.Message);
+            }
+        }
+
+        // Add registration
+        static void AddRegistration()
+        {
+            try
+            {
+                Console.Clear();
+
+                Console.WriteLine("===== ADD REGISTRATION =====");
+
+                string recordId = GenerateRecordId();
+
+                Console.Write("Participant Name: ");
+                string participantName = Console.ReadLine();
+
+                Console.Write("Event Name: ");
+                string eventName = Console.ReadLine();
+
+                Console.Write("Email: ");
+                string email = Console.ReadLine();
+
+                Console.Write("Ticket Type: ");
+                string ticketType = Console.ReadLine();
+
+                if (string.IsNullOrWhiteSpace(participantName) ||
+                    string.IsNullOrWhiteSpace(eventName) ||
+                    string.IsNullOrWhiteSpace(email) ||
+                    string.IsNullOrWhiteSpace(ticketType))
+                {
+                    Console.WriteLine("All fields are required.");
+                    Pause();
+                    return;
+                }
+
+                if (!email.Contains("@"))
+                {
+                    Console.WriteLine("Invalid email.");
+                    Pause();
+                    return;
+                }
+
+                DateTime createdAt = DateTime.Now;
+                DateTime updatedAt = DateTime.Now;
+
+                bool isActive = true;
+
+                string rawData =
+                    recordId +
+                    participantName +
+                    eventName +
+                    email +
+                    ticketType;
+
+                string checksum = GenerateChecksum(rawData);
+
+                string record =
+                    recordId + "|" +
+                    participantName + "|" +
+                    eventName + "|" +
+                    email + "|" +
+                    ticketType + "|" +
+                    createdAt + "|" +
+                    updatedAt + "|" +
+                    isActive + "|" +
+                    checksum;
+
+                File.AppendAllText(
+                    registrationFile,
+                    record + Environment.NewLine
+                );
+
+                Console.WriteLine("Registration added.");
+
+                LogAction("ADD", "Added " + recordId);
+
+                Pause();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Error: " + ex.Message);
+
+                LogAction("ERROR", ex.Message);
+
+                Pause();
+            }
+        }
+
+        // View registrations
+        static void ViewRegistrations()
+        {
+            try
+            {
+                Console.Clear();
+
+                Console.WriteLine("===== ACTIVE REGISTRATIONS =====");
+
+                string[] lines = File.ReadAllLines(registrationFile);
+
+                foreach (string line in lines)
+                {
+                    string[] data = line.Split('|');
+
+                    if (data.Length >= 9 && data[7] == "True")
+                    {
+                        Console.WriteLine("--------------------------------");
+                        Console.WriteLine("Record ID: " + data[0]);
+                        Console.WriteLine("Participant: " + data[1]);
+                        Console.WriteLine("Event: " + data[2]);
+                        Console.WriteLine("Email: " + data[3]);
+                        Console.WriteLine("Ticket Type: " + data[4]);
+                    }
+                }
+
+                LogAction("READ", "Viewed registrations.");
+
+                Pause();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Read error.");
+
+                LogAction("ERROR", ex.Message);
+
+                Pause();
+            }
+        }
+
+        // Search registration
+        static void SearchRegistration()
+        {
+            try
+            {
+                Console.Clear();
+
+                Console.Write("Enter Event Name: ");
+
+                string keyword = Console.ReadLine().ToLower();
+
+                string[] lines = File.ReadAllLines(registrationFile);
+
+                bool found = false;
+
+                foreach (string line in lines)
+                {
+                    string[] data = line.Split('|');
+
+                    if (data.Length >= 9 &&
+                        data[2].ToLower().Contains(keyword) &&
+                        data[7] == "True")
+                    {
+                        Console.WriteLine("--------------------------------");
+                        Console.WriteLine("Record ID: " + data[0]);
+                        Console.WriteLine("Participant: " + data[1]);
+                        Console.WriteLine("Event: " + data[2]);
+
+                        found = true;
+                    }
+                }
+
+                if (!found)
+                {
+                    Console.WriteLine("No registration found.");
+                }
+
+                LogAction("READ", "Searched " + keyword);
+
+                Pause();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Search error.");
+
+                LogAction("ERROR", ex.Message);
+
+                Pause();
+            }
+        }
+
+        // Update registration
+        static void UpdateRegistration()
+        {
+            try
+            {
+                Console.Clear();
+
+                Console.Write("Enter Record ID: ");
+
+                string targetId = Console.ReadLine();
+
+                List<string> lines =
+                    File.ReadAllLines(registrationFile).ToList();
+
+                bool updated = false;
+
+                for (int i = 0; i < lines.Count; i++)
+                {
+                    string[] data = lines[i].Split('|');
+
+                    if (data[0] == targetId)
+                    {
+                        Console.Write("New Participant Name: ");
+                        data[1] = Console.ReadLine();
+
+                        Console.Write("New Event Name: ");
+                        data[2] = Console.ReadLine();
+
+                        Console.Write("New Email: ");
+                        data[3] = Console.ReadLine();
+
+                        Console.Write("New Ticket Type: ");
+                        data[4] = Console.ReadLine();
+
+                        data[6] = DateTime.Now.ToString();
+
+                        string rawData =
+                            data[0] +
+                            data[1] +
+                            data[2] +
+                            data[3] +
+                            data[4];
+
+                        data[8] = GenerateChecksum(rawData);
+
+                        lines[i] = string.Join("|", data);
+
+                        updated = true;
+
+                        break;
+                    }
+                }
+
+                File.WriteAllLines(registrationFile, lines);
+
+                if (updated)
+                {
+                    Console.WriteLine("Registration updated.");
+
+                    LogAction("UPDATE", "Updated " + targetId);
+                }
+                else
+                {
+                    Console.WriteLine("Record not found.");
+                }
+
+                Pause();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Update error.");
+
+                LogAction("ERROR", ex.Message);
+
+                Pause();
+            }
+        }
+
+        // Soft delete
+        static void SoftDeleteRegistration()
+        {
+            try
+            {
+                Console.Clear();
+
+                Console.Write("Enter Record ID: ");
+
+                string targetId = Console.ReadLine();
+
+                List<string> lines =
+                    File.ReadAllLines(registrationFile).ToList();
+
+                bool deleted = false;
+
+                for (int i = 0; i < lines.Count; i++)
+                {
+                    string[] data = lines[i].Split('|');
+
+                    if (data[0] == targetId)
+                    {
+                        data[7] = "False";
+
+                        lines[i] = string.Join("|", data);
+
+                        deleted = true;
+
+                        break;
+                    }
+                }
+
+                File.WriteAllLines(registrationFile, lines);
+
+                if (deleted)
+                {
+                    Console.WriteLine("Soft delete successful.");
+
+                    LogAction("DELETE", "Soft deleted " + targetId);
+                }
+                else
+                {
+                    Console.WriteLine("Record not found.");
+                }
+
+                Pause();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Delete error.");
+
+                LogAction("ERROR", ex.Message);
+
+                Pause();
+            }
+        }
+
+        // Hard delete
+        static void HardDeleteRegistration()
+        {
+            try
+            {
+                Console.Clear();
+
+                Console.Write("Enter Record ID: ");
+
+                string targetId = Console.ReadLine();
+
+                List<string> lines =
+                    File.ReadAllLines(registrationFile).ToList();
+
+                int originalCount = lines.Count;
+
+                lines = lines
+                    .Where(line => !line.StartsWith(targetId + "|"))
+                    .ToList();
+
+                File.WriteAllLines(registrationFile, lines);
+
+                if (lines.Count < originalCount)
+                {
+                    Console.WriteLine("Hard delete successful.");
+
+                    LogAction("DELETE", "Hard deleted " + targetId);
+                }
+                else
+                {
+                    Console.WriteLine("Record not found.");
+                }
+
+                Pause();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Hard delete error.");
+
+                LogAction("ERROR", ex.Message);
+
+                Pause();
+            }
+        }
+
+        // Generate report
+        static void GenerateReport()
+        {
+            try
+            {
+                Console.Clear();
+
+                Console.WriteLine("===== EVENT REPORT =====");
+
+                string[] lines = File.ReadAllLines(registrationFile);
+
+                var report =
+                    lines
+                    .Select(line => line.Split('|'))
+                    .Where(data => data.Length >= 9 && data[7] == "True")
+                    .GroupBy(data => data[2]);
+
+                foreach (var group in report)
+                {
+                    Console.WriteLine(
+                        group.Key + " : " +
+                        group.Count() +
+                        " Registrations"
+                    );
+                }
+
+                LogAction("REPORT", "Generated report.");
+
+                Pause();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Report error.");
+
+                LogAction("ERROR", ex.Message);
+
+                Pause();
+            }
+        }
+
+        // View audit logs
+        static void ViewAuditLogs()
+        {
+            try
+            {
+                Console.Clear();
+
+                Console.WriteLine("===== AUDIT LOGS =====");
+
+                string[] logs = File.ReadAllLines(auditFile);
+
+                foreach (string log in logs)
+                {
+                    Console.WriteLine(log);
+                }
+
+                Pause();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Audit log error.");
+                Pause();
+            }
+        }
+
+        // Save logs
+        static void LogAction(string action, string details)
+        {
+            string log =
+                DateTime.Now +
+                " | " +
+                action +
+                " | " +
+                details;
+
+            File.AppendAllText(
+                auditFile,
+                log + Environment.NewLine
+            );
+        }
+
+        // Generate ID
+        static string GenerateRecordId()
+        {
+            int count =
+                File.ReadAllLines(registrationFile).Length + 1;
+
+            return "R" + count.ToString("000");
+        }
+
+        // Generate checksum
+        static string GenerateChecksum(string data)
+        {
+            int sum = 0;
+
+            foreach (char c in data)
+            {
+                sum += c;
+            }
+
+            return sum.ToString();
+        }
+
+        // Pause
+        static void Pause()
+        {
+            Console.WriteLine("\nPress any key to continue...");
+            Console.ReadKey();
+        }
+    }
+}
